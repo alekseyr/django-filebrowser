@@ -8,6 +8,8 @@ The FileBrowser is an extension to the `Django <http://www.djangoproject.com>`_ 
 * browse directories on your server and upload/delete/edit/rename files.
 * include images/documents to your models/database using the ``FileBrowseField``.
 * select images/documents with TinyMCE.
+Fork from https://github.com/sehmaschine/django-filebrowser
+Add additional permission for using file management
 
 Requirements
 ------------
@@ -18,7 +20,7 @@ FileBrowser 3.5 requires
 * Grappelli 2.4 (https://github.com/sehmaschine/django-grappelli)
 * PIL (http://www.pythonware.com/products/pil/)
 
-Documentation
+Original documentation
 -------------
 
 http://readthedocs.org/docs/django-filebrowser/

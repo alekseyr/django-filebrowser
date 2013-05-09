@@ -52,3 +52,9 @@ def file_exists(site, function):
     return decorator
 
 
+def has_filebrowser_permission(function):
+    def decorator(obj, request, *args, **kw):
+        if not request.user.has_perm('filebrowser.can_use_filebrowser') and not request.user.is_staff:
+            raise Http404()
+        return function(obj, request, *args, **kw)
+    return decorator

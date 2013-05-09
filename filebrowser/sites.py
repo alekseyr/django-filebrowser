@@ -13,6 +13,7 @@ from django.views.decorators.cache import never_cache
 from django.utils.translation import ugettext as _
 from django import forms
 from django.core.urlresolvers import reverse, get_urlconf, get_resolver
+from django.dispatch import Signal
 from django.core.paginator import Paginator, InvalidPage, EmptyPage
 from django.utils.encoding import smart_unicode
 from django.contrib import messages
@@ -26,7 +27,7 @@ from filebrowser.settings import *
 from filebrowser.functions import get_breadcrumbs, get_filterdate, get_settings_var, handle_file_upload, convert_filename
 from filebrowser.templatetags.fb_tags import query_helper
 from filebrowser.base import FileListing, FileObject
-from filebrowser.decorators import path_exists, file_exists
+from filebrowser.decorators import path_exists, file_exists, has_filebrowser_permission
 from filebrowser.storage import FileSystemStorageMixin, StorageMixin
 from filebrowser import signals
 
@@ -117,7 +118,8 @@ class FileBrowserSite(object):
     directory = property(_directory_get, _directory_set)
 
     def filebrowser_view(self, view):
-        return staff_member_required(never_cache(view))
+        #return staff_member_required(never_cache(view))
+        return never_cache(view)
 
     def get_urls(self):
         from django.conf.urls.defaults import patterns, url, include    
@@ -190,10 +192,20 @@ class FileBrowserSite(object):
     def urls(self):
         return self.get_urls(), self.app_name, self.name
 
+    @has_filebrowser_permission
     def browse(self, request):
         """
         Browse Files/Directories.
         """
+
+        # Add permission to database
+        from django.contrib.auth.models import Permission
+        from django.contrib.contenttypes.models import ContentType
+        ct, created = ContentType.objects.get_or_create(model = '', app_label = 'filebrowser', defaults={'name': 'filebrowser'})
+        
+        Permission.objects.get_or_create(codename = 'can_use_filebrowser',
+        content_type__pk = ct.id,
+        defaults = {'name': u'Может просматривать файлы', 'content_type': ct})
 
         filter_re = []
         for exp in EXCLUDE:
@@ -268,6 +280,11 @@ class FileBrowserSite(object):
             'filebrowser_site': self
         }, context_instance=Context(request, current_app=self.name))
 
+    # mkdir signals
+    filebrowser_pre_createdir = Signal(providing_args=["path", "name"])
+    filebrowser_post_createdir = Signal(providing_args=["path", "name"])
+
+    @has_filebrowser_permission
     def createdir(self, request):
         """
         Create Directory.
@@ -307,7 +324,7 @@ class FileBrowserSite(object):
             'filebrowser_site': self
         }, context_instance=Context(request, current_app=self.name))
     
-
+    @has_filebrowser_permission
     def upload(self, request):
         """
         Multipe File Upload.
@@ -324,6 +341,7 @@ class FileBrowserSite(object):
             'filebrowser_site': self
         }, context_instance=Context(request, current_app=self.name))
 
+    @has_filebrowser_permission
     def delete_confirm(self, request):
         """
         Delete existing File/Directory.
@@ -358,6 +376,11 @@ class FileBrowserSite(object):
             'filebrowser_site': self
         }, context_instance=Context(request, current_app=self.name))
 
+    # delete signals
+    filebrowser_pre_delete = Signal(providing_args=["path", "name"])
+    filebrowser_post_delete = Signal(providing_args=["path", "name"])
+
+    @has_filebrowser_permission
     def delete(self, request):
         """
         Delete existing File/Directory.
@@ -379,6 +402,14 @@ class FileBrowserSite(object):
         redirect_url = reverse("filebrowser:fb_browse", current_app=self.name) + query_helper(query, "", "filename,filetype")
         return HttpResponseRedirect(redirect_url)
 
+    # rename signals
+    filebrowser_pre_rename = Signal(providing_args=["path", "name", "new_name"])
+    filebrowser_post_rename = Signal(providing_args=["path", "name", "new_name"])
+
+    filebrowser_actions_pre_apply = Signal(providing_args=['action_name', 'fileobjects',])
+    filebrowser_actions_post_apply = Signal(providing_args=['action_name', 'filebjects', 'result'])
+
+    @has_filebrowser_permission
     def detail(self, request):
         """
         Show detail page for a file.
@@ -434,6 +465,7 @@ class FileBrowserSite(object):
             'filebrowser_site': self
         }, context_instance=Context(request, current_app=self.name))
 
+    @has_filebrowser_permission
     def version(self, request):
         """
         Version detail.
@@ -449,6 +481,11 @@ class FileBrowserSite(object):
             'filebrowser_site': self
         }, context_instance=Context(request, current_app=self.name))
 
+    # upload signals
+    filebrowser_pre_upload = Signal(providing_args=["path", "file"])
+    filebrowser_post_upload = Signal(providing_args=["path", "file"])
+
+    @has_filebrowser_permission
     def _upload_file(self, request):
         """
         Upload file to the server.
@@ -467,6 +504,15 @@ class FileBrowserSite(object):
                 filedata.name = convert_filename(request.GET['qqfile'])
             except KeyError:
                 return HttpResponseBadRequest('Invalid request! No filename given.')
+            else: # Basic (iframe) submission
+                # TODO: This needs some attention, do we use this at all?
+                folder = request.POST.get('folder')
+                if len(request.FILES) == 1:
+                    filedata = request.FILES.values()[0]
+                else:
+                    raise Http404('Invalid request! Multiple files included.')
+                # filedata.name = convert_filename(upload.name)
+                filedata.name = convert_filename(request.POST.get('file_name'))
 
             fb_uploadurl_re = re.compile(r'^.*(%s)' % reverse("filebrowser:fb_upload", current_app=self.name))
             folder = fb_uploadurl_re.sub('', folder)

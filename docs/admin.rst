@@ -241,7 +241,7 @@ Example for using these Signals
 Here's a small example for using the above Signals::
 
     from filebrowser import signals
-    
+ 
     def pre_upload_callback(sender, **kwargs):
         """
         Receiver function called before an upload starts.
